@@ -20,8 +20,6 @@ for i in curl unrar 7z wine; do
 	command -v $i >/dev/null || error "$i - command not found.\nThis script requires $i being installed and accessible from the shell."
 done
 
-[ "$1" = "--keep" ] || [ "$1" = "-k" ] && KEEP_INSTALLER=true
-
 case "$1" in
 	"--keep"|"-k")
 		[ "$2" = "" ] || error "Too many arguments"
