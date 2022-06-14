@@ -1,6 +1,6 @@
 #!/bin/sh
-PFX=$HOME/.wineprefix/WLROnline
-GAMEPATH=$PFX/drive_c/Program\ Files/WLROnline
+WINEPREFIX=$HOME/.wineprefix/WLROnline
+GAMEPATH=$WINEPREFIX/drive_c/Program\ Files/WLROnline
 KEEP_INSTALLER=false
 LOCAL_INSTALL=false
 
@@ -9,7 +9,7 @@ msg() { printf '\033[32m[%s]\033[0m: %s\n' "$0" "$1"; }
 error() { printf '\033[31m[%s]\033[0m: %s\n' "$0" "$1"; exit 1; }
 
 check_installed() {
-[ -d "$HOME/.wineprefix" ] && [ -d "$PFX" ] || [ -f "$HOME/.local/share/applications/wlronline.desktop" ] || [ -f "$HOME/.local/share/applications/wlronline-updater.desktop" ] &&
+[ -d "$WINEPREFIX" ] || [ -f "$HOME/.local/share/applications/wlronline.desktop" ] || [ -f "$HOME/.local/share/applications/wlronline-updater.desktop" ] &&
 error "The game is already installed. If your installation is corrupted you should run \`wlro-install uninstall\` first."
 }
 
@@ -47,16 +47,38 @@ fi
 
 msg "Creating the Wine prefix..."
 [ -d "$HOME/.wineprefix" ] || mkdir "$HOME/.wineprefix"
-WINEPREFIX=$PFX wineboot > /dev/null 2>&1
+wineboot > /dev/null 2>&1
 mkdir -p "$GAMEPATH"
 
 msg "Extracting the game..."
 unrar x -op"$GAMEPATH" "$LOCAL_INSTALLER" 
 
+msg "Creating a CLI launcher..."
+printf '#!/bin/sh
+WINEPREFIX="%s"
+GAMEPATH="%s"
+
+if [ "$1" = "update" ]; then
+	echo "Launching the WLRO updater..."
+	wine "$GAMEPATH/Main.exe" > /dev/null
+	;;
+elif [ -z "$1" ]; then
+	echo "$0: Unknown argument - \"$1\""
+	exit 1
+	;;
+else
+	echo "Launching Wonderland Online: Legend of Rhode Island..."
+	wine "$GAMEPATH/aLogin.exe" > /dev/null
+	;;
+echo "Game has closed."
+' "$WINEPREFIX" "$GAMEPATH" > "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)/wlro"
+
+chmod u+x "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)/wlro"
+
 msg "Launching the updater. Update the game and quit the updater."
 (
 cd "$GAMEPATH" &&
-env WINEPREFIX="$PFX" wine "$GAMEPATH/Main.exe" > /dev/null 2>&1
+wine "$GAMEPATH/Main.exe" > /dev/null 2>&1
 )
 
 msg "Creating application menu entries..."
@@ -69,7 +91,7 @@ Icon=%s/1.ico
 Exec=env WINEPREFIX="%s" wine "%s/aLogin.exe"
 Path=%s
 Categories=Game' \
-"$GAMEPATH" "$PFX" "$GAMEPATH" "$GAMEPATH" > "$HOME/.local/share/applications/wlronline.desktop"
+"$GAMEPATH" "$WINEPREFIX" "$GAMEPATH" "$GAMEPATH" > "$HOME/.local/share/applications/wlronline.desktop"
 
 printf '[Desktop Entry]
 Type=Application
@@ -78,7 +100,7 @@ Icon=%s/WL.ico
 Exec=env WINEPREFIX="%s" wine "%s/Main.exe" 
 Path=%s
 Categories=Game' \
-"$GAMEPATH" "$PFX" "$GAMEPATH" "$GAMEPATH" > "$HOME/.local/share/applications/wlronline-updater.desktop"
+"$GAMEPATH" "$WINEPREFIX" "$GAMEPATH" "$GAMEPATH" > "$HOME/.local/share/applications/wlronline-updater.desktop"
 
 [ "$KEEP_INSTALLER" = false ] && [ "$LOCAL_INSTALL" = false ] &&
 msg "Cleaning up..." &&
@@ -89,22 +111,22 @@ msg "All done! You can now launch the game or run the english patcher."
 };
 
 uninstall() {
-msg "This will remove EVERYTHING under the following directory: $PFX and the application menu entry. Are you sure? [y/N]"
+msg "This will remove EVERYTHING under the following directory: $WINEPREFIX and the application menu entry. Are you sure? [y/N]"
 read -r CHOICE
 [ "$CHOICE" = "y" ] || [ "$CHOICE" = "Y" ] || error "Halted uninstallation."
-rm -rvf "$PFX" "$HOME/.local/share/applications/wlronline.desktop" "$HOME/.local/share/applications/wlronline-updater.desktop"
+rm -rvf "$WINEPREFIX" "$HOME/.local/share/applications/wlronline.desktop" "$HOME/.local/share/applications/wlronline-updater.desktop"
 msg "All done! The game is now removed."
 }
 
 patch() {
-	command -v unzip >/dev/null || error "unzip - command not found.\nThis script requires unzip being installed and accessible from the shell."
+command -v unzip >/dev/null || error "unzip - command not found.\nThis script requires unzip being installed and accessible from the shell."
 
-[ -d "$PFX" ] || error "WLRO Wine prefix doesn't exist. Is the game installed?"
+[ -d "$WINEPREFIX" ] || error "WLRO Wine prefix doesn't exist. Is the game installed?"
 
 [ -f aLogin.exe ] && [ -f SERVER.INI ] && [ -f data.zip ] && [ -f menu.zip ] ||
 error "This command needs to be ran from a directory containing all English-patched files: aLogin.exe, SERVER.INI, data.zip & menu.zip."
 
-msg "This will replace files under the following directory: $PFX. Are you sure? [y/N]"
+msg "This will replace files under the following directory: $WINEPREFIX. Are you sure? [y/N]"
 read -r CHOICE
 [ "$CHOICE" = "y" ] || [ "$CHOICE" = "Y" ] || error "Halted patching."
 
