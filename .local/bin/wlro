@@ -149,7 +149,7 @@ msg "The game was successfully patched."
 
 help() {
 msg "
-Usage: wlro-install [update | install [{-l | --local} installer_file | {-k | --keep}] | uninstall | patch]
+Usage: $THIS_NAME [update | install [{-l | --local} installer_file | {-k | --keep}] | uninstall | patch]
 This is a script to run and install Wonderland Online: Legend of Rhode Island on a GNU/Linux system. Ran without parameters it will launch the game.
 
 options:
