@@ -1,20 +1,49 @@
 #!/bin/sh
-WINEPREFIX=$HOME/.wineprefix/WLROnline
-GAMEPATH=$WINEPREFIX/drive_c/Program\ Files/WLROnline
+unset WINEPREFIX GAMEPATH
+# Custom WINEPREFIX and custom GAMEPATH are sourced from here
+CONFIG_PATH="${XDG_CONFIG_HOME:-$HOME/.config}/wlro"
+[ -f "$CONFIG_PATH/config" ] && . "$CONFIG_PATH/config"
+
+THIS_NAME="$(basename "$0")"
+WINEPREFIX="${CUSTOM_WINEPFX:-"${WINEPREFIX:-"$HOME/.wineprefix/WLROnline"}"}"
+GAMEPATH="${CUSTOM_GAMEPATH:-"${GAMEPATH:-"$WINEPREFIX/drive_c/Program\ Files/WLROnline"}"}"
 KEEP_INSTALLER=false
 LOCAL_INSTALL=false
 
-msg() { printf '\033[32m[%s]\033[0m: %s\n' "$0" "$1"; }
+msg() { printf '\033[32m[%s]\033[0m: %s\n' "$THIS_NAME" "$1"; }
 
-error() { printf '\033[31m[%s]\033[0m: %s\n' "$0" "$1"; exit 1; }
+error() { printf '\033[31m[%s]\033[0m: %s\n' "$THIS_NAME" "$1"; exit 1; }
+
+write_config() {
+[ -f "$CONFIG_PATH/config" ] || ([ -d "$CONFIG_PATH" ] || mkdir -p "$CONFIG_PATH" && touch "$CONFIG_PATH/config" && msg "Created config file." )
+
+CONFIG_BUILDER=$(printf 'export WINEPREFIX="%s"
+export GAMEPATH="%s"
+' "$WINEPREFIX" "$GAMEPATH")
+
+[ "$CONFIG_BUILDER" = "$(cat "$CONFIG_PATH/config")" ] || (printf '%s' "$CONFIG_BUILDER" > "$CONFIG_PATH/config" && msg "Saved specified vars to the config file.")
+}
 
 check_installed() {
-[ -d "$WINEPREFIX" ] || [ -f "$HOME/.local/share/applications/wlronline.desktop" ] || [ -f "$HOME/.local/share/applications/wlronline-updater.desktop" ] &&
-error "The game is already installed. If your installation is corrupted you should run \`wlro-install uninstall\` first."
+[ -d "$WINEPREFIX" ] && [ -d "$GAMEPATH" ] || return 1
+}
+
+run() {
+check_installed || error "The game is not installed. Run \`$THIS_NAME install\` first."
+msg "Launching Wonderland Online: Legend of Rhode Island..."
+(cd "$GAMEPATH" && wine "aLogin.exe" > /dev/null)
+msg "Game has closed."
+}
+
+update() {
+check_installed || error "The game is not installed. Run \`$THIS_NAME install\` first."
+msg "Launching WLRO updater..."
+(cd "$GAMEPATH" && wine "Main.exe" > /dev/null)
+msg "Game has closed."
 }
 
 install() {
-check_installed
+check_installed && error "The game is already installed. If your installation is corrupted you should run \`$THIS_NAME uninstall\` first."
 
 for i in curl unrar 7z wine; do
 	command -v $i >/dev/null || error "$i - command not found.\nThis script requires $i being installed and accessible from the shell."
@@ -22,11 +51,11 @@ done
 
 case "$1" in
 	"--keep"|"-k")
-		[ "$2" = "" ] || error "Too many arguments"
+		[ -n "$2" ] && error "Too many arguments"
 		KEEP_INSTALLER=true
 		;;
 	"--local"|"-l")
-		[ "$2" = "" ] && error "Local installer option chosen but no installer file specified."
+		[ -z "$2" ] && error "Local installer option chosen but no installer file specified."
 		[ -f "$2" ] || error "Installer file doesn't exist: $2"
 		LOCAL_INSTALL=true
 		LOCAL_INSTALLER="$2"
@@ -52,28 +81,6 @@ mkdir -p "$GAMEPATH"
 
 msg "Extracting the game..."
 unrar x -op"$GAMEPATH" "$LOCAL_INSTALLER" 
-
-msg "Creating a CLI launcher..."
-printf '#!/bin/sh
-WINEPREFIX="%s"
-GAMEPATH="%s"
-
-if [ "$1" = "update" ]; then
-	echo "Launching the WLRO updater..."
-	wine "$GAMEPATH/Main.exe" > /dev/null
-	;;
-elif [ -z "$1" ]; then
-	echo "$0: Unknown argument - \"$1\""
-	exit 1
-	;;
-else
-	echo "Launching Wonderland Online: Legend of Rhode Island..."
-	wine "$GAMEPATH/aLogin.exe" > /dev/null
-	;;
-echo "Game has closed."
-' "$WINEPREFIX" "$GAMEPATH" > "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)/wlro"
-
-chmod u+x "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)/wlro"
 
 msg "Launching the updater. Update the game and quit the updater."
 (
@@ -114,7 +121,7 @@ uninstall() {
 msg "This will remove EVERYTHING under the following directory: $WINEPREFIX and the application menu entry. Are you sure? [y/N]"
 read -r CHOICE
 [ "$CHOICE" = "y" ] || [ "$CHOICE" = "Y" ] || error "Halted uninstallation."
-rm -rvf "$WINEPREFIX" "$HOME/.local/share/applications/wlronline.desktop" "$HOME/.local/share/applications/wlronline-updater.desktop"
+rm -rvf "$GAMEPATH" "$WINEPREFIX" "$HOME/.local/share/applications/wlronline.desktop" "$HOME/.local/share/applications/wlronline-updater.desktop"
 msg "All done! The game is now removed."
 }
 
@@ -142,31 +149,41 @@ msg "The game was successfully patched."
 
 help() {
 msg "
-Usage: wlro-install {install [{-l | --local} installer_file | {-k | --keep}] | uninstall | patch}
-This is a script to install Wonderland Online: Legend of Rhode Island on a GNU/Linux system.
+Usage: wlro-install [update | install [{-l | --local} installer_file | {-k | --keep}] | uninstall | patch]
+This is a script to run and install Wonderland Online: Legend of Rhode Island on a GNU/Linux system. Ran without parameters it will launch the game.
 
 options:
+update: Runs the game updater.
 install: Creates the Wine prefix, downloads the installer (if necessary) and extracts it. The -l (--local) switch allows you to specify the installer on your filesystem. The -k (--keep) switch downloads the installer to your working directory and doesn't remove it at the end of the installation process.
 uninstall: Removes the entire Wine prefix and the application menu entries.
 patch: Installs Rifeldo's English patch if its files reside in the working directory.
+
+overridable variables:
+CUSTOM_WINEPFX: Custom WINEPREFIX path.
+CUSTOM_GAMEPATH: Custom path to install the game to.
 "
 }
 
-[ "$4" = "" ] || error "Too many arguments."
+[ -n "$4" ] && error "Too many arguments."
+
+write_config
 
 case $1 in
+	"")
+		run;;
+	"update")
+		[ -n "$2" ] && error "Too many arguments."
+		update;;
 	"install")
 		install "$2" "$3";;
 	"uninstall")
-		[ "$2" = "" ] || error "Too many arguments."
+		[ -n "$2" ] && error "Too many arguments."
 		uninstall;;
 	"patch")
-		[ "$2" = "" ] || error "Too many arguments."
+		[ -n "$2" ] && error "Too many arguments."
 		patch;;
 	"--help")
 		help;;
-	"")
-		error "This script needs to be given a command. Available commands: install, uninstall, patch.";;
 	*)
-		error "Command unavailable - $1. Available commands: install, uninstall, patch.";;
+		error "Command unavailable - $1. Available commands: update, install, uninstall, patch.";;
 esac
