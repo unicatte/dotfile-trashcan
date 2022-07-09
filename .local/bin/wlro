@@ -6,7 +6,7 @@ CONFIG_PATH="${XDG_CONFIG_HOME:-$HOME/.config}/wlro"
 
 THIS_NAME="$(basename "$0")"
 WINEPREFIX="${CUSTOM_WINEPFX:-"${WINEPREFIX:-"$HOME/.wineprefix/WLROnline"}"}"
-GAMEPATH="${CUSTOM_GAMEPATH:-"${GAMEPATH:-"$WINEPREFIX/drive_c/Program\ Files/WLROnline"}"}"
+GAMEPATH="${CUSTOM_GAMEPATH:-"${GAMEPATH:-"$WINEPREFIX/drive_c/Program Files/WLROnline"}"}"
 KEEP_INSTALLER=false
 LOCAL_INSTALL=false
 
@@ -46,7 +46,8 @@ install() {
 check_installed && error "The game is already installed. If your installation is corrupted you should run \`$THIS_NAME uninstall\` first."
 
 for i in curl unrar 7z wine; do
-	command -v $i >/dev/null || error "$i - command not found.\nThis script requires $i being installed and accessible from the shell."
+	command -v $i >/dev/null || error "$i - command not found.
+This script requires $i being installed and accessible from the shell."
 done
 
 case "$1" in
@@ -58,7 +59,7 @@ case "$1" in
 		[ -z "$2" ] && error "Local installer option chosen but no installer file specified."
 		[ -f "$2" ] || error "Installer file doesn't exist: $2"
 		LOCAL_INSTALL=true
-		LOCAL_INSTALLER="$2"
+		LOCAL_INSTALLER="$(readlink -f "$2")"
 		;;
 esac
 
@@ -80,7 +81,10 @@ wineboot > /dev/null 2>&1
 mkdir -p "$GAMEPATH"
 
 msg "Extracting the game..."
-unrar x -op"$GAMEPATH" "$LOCAL_INSTALLER" 
+(
+cd "$GAMEPATH"
+unrar x "$LOCAL_INSTALLER" 
+)
 
 msg "Launching the updater. Update the game and quit the updater."
 (
