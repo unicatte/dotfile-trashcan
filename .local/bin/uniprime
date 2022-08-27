@@ -18,14 +18,27 @@ moduleloaded(){
 [ -n "$(lsmod | grep "nvidia")" ] && return 0
 return 1
 }
+nvidiaisdefault(){
+case "$(glxinfo | grep "OpenGL renderer")" in
+	"OpenGL renderer string: NVIDIA"*)
+		return 0;;
+esac
+return 1
+}
 
 if [ "$1" = "--force" ]; then
-	if ! moduleloaded; then
+	if nvidiaisdefault; then
+		echo "NVIDIA is already the default OpenGL renderer. Running the command using defaults..."
+		"${@:2}"
+		exit 0
+	elif ! moduleloaded; then
 		>&2 echo "ERROR: NVIDIA card not available."
 		zenity --error --text="ERROR: NVIDIA card not available."
 		exit 1
 	fi
 	setprimeenv "${@:2}"
+elif nvidiaisdefault; then
+	"$@"
 elif ! moduleloaded; then
 	"$@"
 elif checkdischarging; then
