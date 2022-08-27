@@ -1,0 +1,35 @@
+#!/bin/sh
+## uniprime
+#  Does the same thing as nvidia-prime (runs the command using the discrete
+#  NVIDIA GPU) but only if the NVIDIA card is available and the system is
+#  connected to an AC adapter. Otherwise relies to defaults.
+#  If conditions aren't met it can still be forced to use the NVIDIA dGPU by
+#  passing the --force switch as the first argument.
+setprimeenv(){
+__NV_PRIME_RENDER_OFFLOAD=1 __VK_LAYER_NV_optimus=NVIDIA_only __GLX_VENDOR_LIBRARY_NAME=nvidia "$@"
+}
+checkdischarging(){
+for i in "$(find "/sys/class/power_supply/" -maxdepth 1 -name "BAT?")"; do
+	[ "$(cat "$i/status")" = "Discharging" ] && return 0
+done
+return 1
+}
+moduleloaded(){
+[ -n "$(lsmod | grep "nvidia")" ] && return 0
+return 1
+}
+
+if [ "$1" = "--force" ]; then
+	if ! moduleloaded; then
+		>&2 echo "ERROR: NVIDIA card not available."
+		zenity --error --text="ERROR: NVIDIA card not available."
+		exit 1
+	fi
+	setprimeenv "${@:2}"
+elif ! moduleloaded; then
+	"$@"
+elif checkdischarging; then
+	"$@"
+else
+	setprimeenv "$@"
+fi
