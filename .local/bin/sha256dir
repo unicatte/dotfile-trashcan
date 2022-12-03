@@ -1,0 +1,16 @@
+#!/bin/sh
+# Prints a list of all files with their sha256sums from a given directory.
+# Most important part derived from
+# https://worklifenotes.com/2020/03/05/get-sha256-hash-on-a-directory/
+if [ -n "$2" ]; then
+	>&2 echo "ERROR: Too many arguments"
+elif [ -f "$1" ]; then
+	>&2 echo "ERROR: Is a file."
+	exit 1
+elif [ -d "$1" ]; then
+	# Get absolute path to the catalog in question
+	dir="$(cd "$1" && pwd -P)"
+	find "$dir" -type f -exec sha256sum {} \; | sed "s~$dir/~~g" | LC_ALL=C sort -d
+else
+	>&2 echo "ERROR: No such file or directory."
+fi
