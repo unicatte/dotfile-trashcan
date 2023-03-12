@@ -1,0 +1,16 @@
+[Desktop Entry]
+Name=Discord
+StartupWMClass=discord
+Comment=All-in-one voice and text chat for gamers that's free, secure, and works on both your desktop and phone.
+GenericName=Internet Messenger
+Exec=/home/unicatte/.local/bin/discord
+Icon=/home/unicatte/.local/opt/discord/discord.png
+Type=Application
+Categories=Network;InstantMessaging;
+Path=/home/unicatte/.local/bin
+
+Actions=uninstall
+
+[Desktop Action uninstall]
+Name=Uninstall Discord
+Exec=/home/unicatte/.local/bin/discord uninstall

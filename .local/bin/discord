@@ -1,0 +1,88 @@
+#!/bin/sh
+## TODO
+#  resolving dependencies
+#  installing to dirs not owned by the user
+THIS_NAME="$(basename "$0")"
+URL=$(curl -LsIo /dev/null -w '%{url_effective}' 'https://discord.com/api/download?platform=linux&format=tar.gz')
+
+shopt -s extglob
+msg() { printf '\033[32m[%s]\033[0m: %s\n' "${THIS_NAME}" "${1}"; }
+error() { >&2 printf '\033[31m[%s]\033[0m: %s\n' "${THIS_NAME}" "${1}"; }
+error_quit() { error "${1}"; exit 1; }
+question() { zenity --question --width 550 --text "${1}"; return ${?}; }
+zenity_error() { zenity --error --width 550 --text "${1}"; }
+zenity_msg() { zenity --info --width 550 --text "${1}"; }
+launch() { ( cd "${HOME}/.local/opt/discord/" && ./Discord ); }
+
+if [ "${1}" = "--help" ] && [ -z "${2}" ]; then
+	printf "%s - a launcher for Discord by unicatte. This launcher updates Discord independently from the package manager whenever there's a new version available. It's meant to be a drop-in replacement for any other method of running Discord on Linux.\n" "${THIS_NAME}"
+	exit 0;
+elif [ "${1}" = "uninstall" ] && [ -z "${2}" ]; then
+	if ! question "Do you want to uninstall Discord?"; then
+		exit 1
+	fi
+	rm -rvf "${HOME}/.local/opt/discord"
+	rm -vf "${HOME}/.local/share/applications/discord.desktop"
+	zenity_msg "Discord has been uninstalled successfully!"
+	exit 0;
+elif [ -n "${1}" ]; then
+	error_quit "Too many arguments."
+fi
+
+if ! command -v zenity >/dev/null; then
+	error "zenity not found."
+	error_quit "This script requires zenity being installed and accessible from the shell."
+fi
+
+for i in curl jq ; do
+	if ! command -v $i >/dev/null; then
+		zenity_error "$i - command not found.\nThis script requires $i being installed and accessible from the shell."
+		exit 1;
+	fi
+done
+
+case ${URL} in
+	https://dl.discordapp.net/apps/linux/+([0-9]).+([0-9]).+([0-9])/discord-+([0-9]).+([0-9]).+([0-9]).tar.gz)
+		# Pattern matched, do nothing
+		;;
+	*)
+		if ! question "The redirect HTTPS address doesn't match our pattern. The directory structure of downloads from Discord might have changed or the server has been compromised. Do you want to continue?"; then
+			exit 1
+		fi
+		;;
+esac
+
+if [ -f "${HOME}/.local/opt/discord/resources/build_info.json" ]; then
+	REMOTE_VER="$(echo "${URL}" | grep -Eo '[0-9]{1,}.[0-9]{1,}.[0-9]{1,}' | head -n 1)"
+	LOCAL_VER="$(jq -r .version "${HOME}/.local/opt/discord/resources/build_info.json")"
+	if [ "${REMOTE_VER}" = "${LOCAL_VER}" ]; then
+		launch
+		exit 0
+	fi
+fi
+DL_FILE=$(mktemp)
+curl -Lo "${DL_FILE}" "${URL}"
+[ -d "${HOME}/.local/opt" ] || mkdir -p "${HOME}/.local/opt"
+tar -zxvf "${DL_FILE}" -C "${HOME}/.local/opt"
+mv "${HOME}/.local/opt/Discord" "${HOME}/.local/opt/discord"
+chmod u+x "${HOME}/.local/opt/discord/Discord"
+[ -d "${HOME}/.local/share/applications" ] || mkdir -p "${HOME}/.local/share/applications"
+printf "[Desktop Entry]
+Name=Discord
+StartupWMClass=discord
+Comment=All-in-one voice and text chat for gamers that's free, secure, and works on both your desktop and phone.
+GenericName=Internet Messenger
+Exec=%s
+Icon=%s/.local/opt/discord/discord.png
+Type=Application
+Categories=Network;InstantMessaging;
+Path=%s/.local/bin
+
+Actions=uninstall
+
+[Desktop Action uninstall]
+Name=Uninstall Discord
+Exec=%s uninstall" "$(readlink -f "${0}")" "${HOME}" "${HOME}" "$(readlink -f "${0}")"> "${HOME}/.local/share/applications/discord.desktop"
+
+rm "${DL_FILE}"
+launch
