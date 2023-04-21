@@ -73,6 +73,10 @@ if [ "$LOCAL_INSTALL" = false ]; then
 	msg "Downloading WLROnline.exe..."
 	LOCAL_INSTALLER="$DL_PATH/WLROnline.exe"
 	curl -o "$LOCAL_INSTALLER" https://hem-release-resources1.chinesegamer.net/HEM_TW/WLROnline.exe
+	curl_error="${?}"
+	if [ "${curl_error}" != 0 ]; then
+		error "curl error ${curl_error}"
+	fi
 fi
 
 msg "Creating the Wine prefix..."

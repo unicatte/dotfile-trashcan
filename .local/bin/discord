@@ -3,7 +3,6 @@
 #  resolving dependencies
 #  installing to dirs not owned by the user
 THIS_NAME="$(basename "$0")"
-URL=$(curl -LsIo /dev/null -w '%{url_effective}' 'https://discord.com/api/download?platform=linux&format=tar.gz')
 
 shopt -s extglob
 msg() { printf '\033[32m[%s]\033[0m: %s\n' "${THIS_NAME}" "${1}"; }
@@ -17,7 +16,14 @@ launch() { ( cd "${HOME}/.local/opt/discord/" && ./Discord ); }
 if [ "${1}" = "--help" ] && [ -z "${2}" ]; then
 	printf "%s - a launcher for Discord by unicatte. This launcher updates Discord independently from the package manager whenever there's a new version available. It's meant to be a drop-in replacement for any other method of running Discord on Linux.\n" "${THIS_NAME}"
 	exit 0;
-elif [ "${1}" = "uninstall" ] && [ -z "${2}" ]; then
+fi
+
+if ! command -v zenity >/dev/null; then
+	error "zenity not found."
+	error_quit "This script requires zenity being installed and accessible from the shell."
+fi
+
+if [ "${1}" = "uninstall" ] && [ -z "${2}" ]; then
 	if ! question "Do you want to uninstall Discord?"; then
 		exit 1
 	fi
@@ -29,17 +35,21 @@ elif [ -n "${1}" ]; then
 	error_quit "Too many arguments."
 fi
 
-if ! command -v zenity >/dev/null; then
-	error "zenity not found."
-	error_quit "This script requires zenity being installed and accessible from the shell."
-fi
-
 for i in curl jq ; do
-	if ! command -v $i >/dev/null; then
-		zenity_error "$i - command not found.\nThis script requires $i being installed and accessible from the shell."
+	if ! command -v "${i}" >/dev/null; then
+		zenity_error "${i} - command not found.\nThis script requires $i being installed and accessible from the shell."
 		exit 1;
 	fi
 done
+
+URL=$(curl -LsIo /dev/null -w '%{url_effective}' 'https://discord.com/api/download?platform=linux&format=tar.gz') #quotes around shell expression desirable?
+
+curl_error=${?}
+
+if [ "${curl_error}" != 0 ]; then
+	zenity_error "curl error ${curl_error}"
+	exit 1
+fi
 
 case ${URL} in
 	https://dl.discordapp.net/apps/linux/+([0-9]).+([0-9]).+([0-9])/discord-+([0-9]).+([0-9]).+([0-9]).tar.gz)
