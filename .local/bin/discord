@@ -4,7 +4,6 @@
 #  installing to dirs not owned by the user
 THIS_NAME="$(basename "$0")"
 
-shopt -s extglob
 msg() { printf '\033[32m[%s]\033[0m: %s\n' "${THIS_NAME}" "${1}"; }
 error() { >&2 printf '\033[31m[%s]\033[0m: %s\n' "${THIS_NAME}" "${1}"; }
 error_quit() { error "${1}"; exit 1; }
@@ -52,7 +51,7 @@ if [ "${curl_error}" != 0 ]; then
 fi
 
 case ${URL} in
-	https://dl.discordapp.net/apps/linux/+([0-9]).+([0-9]).+([0-9])/discord-+([0-9]).+([0-9]).+([0-9]).tar.gz)
+	https://dl.discordapp.net/apps/linux/*.*.*/discord-*.*.*.tar.gz)
 		# Pattern matched, do nothing
 		;;
 	*)
