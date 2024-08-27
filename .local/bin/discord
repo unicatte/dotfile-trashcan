@@ -3,6 +3,8 @@
 #  resolving dependencies
 #  installing to dirs not owned by the user
 THIS_NAME="$(basename "$0")"
+opt_dir="${HOME}/.local/opt"
+discord_dir="${opt_dir}/discord"
 
 msg() { printf '\033[32m[%s]\033[0m: %s\n' "${THIS_NAME}" "${1}"; }
 error() { >&2 printf '\033[31m[%s]\033[0m: %s\n' "${THIS_NAME}" "${1}"; }
@@ -72,8 +74,9 @@ fi
 DL_FILE=$(mktemp)
 curl -Lo "${DL_FILE}" "${URL}"
 [ -d "${HOME}/.local/opt" ] || mkdir -p "${HOME}/.local/opt"
-tar -zxvf "${DL_FILE}" -C "${HOME}/.local/opt"
-mv "${HOME}/.local/opt/Discord" "${HOME}/.local/opt/discord"
+( ! [ -d "${HOME}/.local/opt/discord" ] || rm -rvf "${HOME}/.local/opt/discord" )
+mkdir "${discord_dir}"
+( cd "${discord_dir}" && tar --strip-components=1 -zxvf "${DL_FILE}" Discord/ )
 chmod u+x "${HOME}/.local/opt/discord/Discord"
 [ -d "${HOME}/.local/share/applications" ] || mkdir -p "${HOME}/.local/share/applications"
 printf "[Desktop Entry]
