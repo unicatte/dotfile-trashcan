@@ -1,7 +1,8 @@
-#!/bin/sh
+#!/bin/bash
 ## TODO
 #  resolving dependencies
 #  installing to dirs not owned by the user
+(
 THIS_NAME="$(basename "$0")"
 opt_dir="${HOME}/.local/opt"
 discord_dir="${opt_dir}/discord"
@@ -43,9 +44,17 @@ for i in curl jq ; do
 	fi
 done
 
-URL=$(curl -LsIo /dev/null -w '%{url_effective}' 'https://discord.com/api/download?platform=linux&format=tar.gz') #quotes around shell expression desirable?
+installed=false
 
-curl_error=${?}
+if [ -d "${opt_dir}" ] && [ -d "${discord_dir}" ] && [ -f "${discord_dir}/Discord" ]; then
+  launch &
+  running_pid="${!}"
+  installed=true
+fi
+
+URL="$(curl -LsIo /dev/null -w '%{url_effective}' 'https://discord.com/api/download?platform=linux&format=tar.gz')"
+
+curl_error="${?}"
 
 if [ "${curl_error}" != 0 ]; then
 	zenity_error "curl error ${curl_error}"
@@ -53,25 +62,32 @@ if [ "${curl_error}" != 0 ]; then
 fi
 
 case ${URL} in
-	https://dl.discordapp.net/apps/linux/*.*.*/discord-*.*.*.tar.gz)
+	https://dl.discordapp.net/apps/linux/*.*.*/discord-*.*.*.tar.gz|https://stable.dl2.discordapp.net/apps/linux/*.*.*/discord-*.*.*.tar.gz)
 		# Pattern matched, do nothing
+		true
 		;;
 	*)
 		if ! question "The redirect HTTPS address doesn't match our pattern. The directory structure of downloads from Discord might have changed or the server has been compromised. Do you want to continue?"; then
-			exit 1
+			wait
+			exit 0
 		fi
 		;;
 esac
 
+REMOTE_VER="$(echo "${URL}" | grep -Eo '[0-9]{1,}.[0-9]{1,}.[0-9]{1,}' | head -n 1)"
+LOCAL_VER="n/a"
 if [ -f "${HOME}/.local/opt/discord/resources/build_info.json" ]; then
-	REMOTE_VER="$(echo "${URL}" | grep -Eo '[0-9]{1,}.[0-9]{1,}.[0-9]{1,}' | head -n 1)"
 	LOCAL_VER="$(jq -r .version "${HOME}/.local/opt/discord/resources/build_info.json")"
 	if [ "${REMOTE_VER}" = "${LOCAL_VER}" ]; then
-		launch
+		wait
 		exit 0
 	fi
 fi
-DL_FILE=$(mktemp)
+if "${installed}" && ! question "New Discord version is available for download!"$'\n'"New version: ${REMOTE_VER}"$'\n'"Old version: ${LOCAL_VER}"$'\n'"Would you like to install it?"; then
+  wait
+  exit 0
+fi
+DL_FILE="$(mktemp)"
 curl -Lo "${DL_FILE}" "${URL}"
 [ -d "${HOME}/.local/opt" ] || mkdir -p "${HOME}/.local/opt"
 ( ! [ -d "${HOME}/.local/opt/discord" ] || rm -rvf "${HOME}/.local/opt/discord" )
@@ -97,4 +113,14 @@ Name=Uninstall Discord
 Exec=%s uninstall" "$(readlink -f "${0}")" "${HOME}" "${HOME}" "$(readlink -f "${0}")"> "${HOME}/.local/share/applications/discord.desktop"
 
 rm "${DL_FILE}"
-launch
+if "${installed}"; then
+  if question "Installing update finished, changes will be available after next restart of Discord. Would you like to do that now?"; then
+    killall Discord
+    launch
+  else
+    wait
+  fi
+else
+  launch
+fi
+)
