@@ -1,197 +1,262 @@
 #!/bin/sh
-unset WINEPREFIX GAMEPATH
-# Custom WINEPREFIX and custom GAMEPATH are sourced from here
-CONFIG_PATH="${XDG_CONFIG_HOME:-$HOME/.config}/wlro"
-[ -f "$CONFIG_PATH/config" ] && . "$CONFIG_PATH/config"
+(
+set -euo pipefail
+unset WINEPREFIX gamepath
+home="$(getent passwd "$(whoami)" | cut -d: -f6)"
+# Custom WINEPREFIX and custom gamepath are sourced from here
+CONFIG_PATH="${XDG_CONFIG_HOME:-"${home}/.config"}/wlro"
+[ -f "${CONFIG_PATH}/config" ] && . "${CONFIG_PATH}/config"
 
-THIS_NAME="$(basename "$0")"
-WINEPREFIX="${CUSTOM_WINEPFX:-"${WINEPREFIX:-"$HOME/.wineprefix/WLROnline"}"}"
-GAMEPATH="${CUSTOM_GAMEPATH:-"${GAMEPATH:-"$WINEPREFIX/drive_c/Program Files/WLROnline"}"}"
+THIS_NAME="$(basename "${0}")"
+WINEPREFIX="${CUSTOM_WINEPFX:-"${WINEPREFIX:-"${home}/.wineprefix/WLROnline"}"}"
+gamepath="${CUSTOM_GAMEPATH:-"${gamepath:-"${WINEPREFIX}/drive_c/Program Files/WLROnline"}"}"
+sharepath="${home}/.local/share/wlro"
 KEEP_INSTALLER=false
 LOCAL_INSTALL=false
 
-msg() { printf '\033[32m[%s]\033[0m: %s\n' "$THIS_NAME" "$1"; }
+msg() {( printf '\033[32m[%s]\033[0m: %s\n' "${THIS_NAME}" "${1}" || true )}
 
-error() { printf '\033[31m[%s]\033[0m: %s\n' "$THIS_NAME" "$1"; exit 1; }
+error() {( printf '\033[31m[%s]\033[0m: %s\n' "${THIS_NAME}" "${1}"; exit 1; )}
 
-write_config() {
-[ -f "$CONFIG_PATH/config" ] || ([ -d "$CONFIG_PATH" ] || mkdir -p "$CONFIG_PATH" && touch "$CONFIG_PATH/config" && msg "Created config file." )
+write_config() {(
+[ -f "${CONFIG_PATH}/config" ] || ([ -d "${CONFIG_PATH}" ] || mkdir -p "${CONFIG_PATH}" && touch "${CONFIG_PATH}/config" && msg "Created config file." )
 
-CONFIG_BUILDER=$(printf 'export WINEPREFIX="%s"
-export GAMEPATH="%s"
-' "$WINEPREFIX" "$GAMEPATH")
+CONFIG_BUILDER="$(printf 'export WINEPREFIX="%s"
+export gamepath="%s"
+' "${WINEPREFIX}" "${gamepath}")"
 
-[ "$CONFIG_BUILDER" = "$(cat "$CONFIG_PATH/config")" ] || (printf '%s' "$CONFIG_BUILDER" > "$CONFIG_PATH/config" && msg "Saved specified vars to the config file.")
-}
+[ "${CONFIG_BUILDER}" = "$(cat "${CONFIG_PATH}/config")" ] || (printf '%s' "${CONFIG_BUILDER}" > "$CONFIG_PATH/config" && msg "Saved specified vars to the config file.")
+)}
 
-check_installed() {
-[ -d "$WINEPREFIX" ] && [ -d "$GAMEPATH" ] || return 1
-}
+check_installed() {(
+[ -d "${WINEPREFIX}" ] && [ -d "${gamepath}" ] || return 1
+)}
 
-run() {
-check_installed || error "The game is not installed. Run \`$THIS_NAME install\` first."
+run() {(
+check_installed || error "The game is not installed. Run \`${THIS_NAME} install\` first."
 msg "Launching Wonderland Online: Legend of Rhode Island..."
-(cd "$GAMEPATH" && wine "aLogin.exe" > /dev/null)
+(cd "${gamepath}" && PROTON_VERB=runinprefix umu-run "aLogin.exe" > /dev/null)
 msg "Game has closed."
-}
+)}
 
-update() {
-check_installed || error "The game is not installed. Run \`$THIS_NAME install\` first."
+update() {(
+check_installed || error "The game is not installed. Run \`${THIS_NAME} install\` first."
 msg "Launching WLRO updater..."
-(cd "$GAMEPATH" && wine "Main.exe" > /dev/null)
+(cd "${gamepath}" && umu-run "Main.exe" > /dev/null)
 msg "Game has closed."
-}
+)}
 
-install() {
-check_installed && error "The game is already installed. If your installation is corrupted you should run \`$THIS_NAME uninstall\` first."
+install() {(
+check_installed && error "The game is already installed. If your installation is corrupted you should run \`${THIS_NAME} uninstall\` first."
 
-for i in curl unrar 7z wine; do
-	command -v $i >/dev/null || error "$i - command not found.
-This script requires $i being installed and accessible from the shell."
+for i in wget unrar 7z umu-run; do
+	command -v "${i}" >/dev/null || error "${i} - command not found.
+This script requires ${i} being installed and accessible from the shell."
 done
 
-case "$1" in
-	"--keep"|"-k")
-		[ -n "$2" ] && error "Too many arguments"
-		KEEP_INSTALLER=true
-		;;
-	"--local"|"-l")
-		[ -z "$2" ] && error "Local installer option chosen but no installer file specified."
-		[ -f "$2" ] || error "Installer file doesn't exist: $2"
-		LOCAL_INSTALL=true
-		LOCAL_INSTALLER="$(readlink -f "$2")"
-		;;
-esac
+# TODO: better argument parsing
+if [ "${#}" -gt 0 ]; then
+  case "${1}" in
+    "--keep"|"-k")
+      [ "${#}" -gt 1 ] && error "Too many arguments"
+      KEEP_INSTALLER=true
+      ;;
+    "--local"|"-l")
+      [ "${#}" -lt 2 ] && error "Local installer option chosen but no installer file specified."
+      [ -f "${2}" ] || error "Installer file doesn't exist: ${2}"
+      LOCAL_INSTALL=true
+      LOCAL_INSTALLER="$(readlink -f "${2}")"
+      ;;
+  esac
+fi
 
-if [ "$LOCAL_INSTALL" = false ]; then
-	if [ "$KEEP_INSTALLER" = true ]; then
-		DL_PATH=$(pwd)
+if [ "${LOCAL_INSTALL}" = false ]; then
+	if [ "${KEEP_INSTALLER}" = true ]; then
+		DL_PATH="$(pwd)"
 	else
-		DL_PATH=$(mktemp -d) && msg "Created folder $DL_PATH to temporarily store files during the install."
+		DL_PATH="$(mktemp -d)" && msg "Created folder ${DL_PATH} to temporarily store files during the install."
 	fi
 
 	msg "Downloading WLROnline.exe..."
-	LOCAL_INSTALLER="$DL_PATH/WLROnline.exe"
-	curl -o "$LOCAL_INSTALLER" https://hem-release-resources1.chinesegamer.net/HEM_TW/WLROnline.exe
-	curl_error="${?}"
-	if [ "${curl_error}" != 0 ]; then
-		error "curl error ${curl_error}"
+	LOCAL_INSTALLER="${DL_PATH}/WLROnline.exe"
+	wget -P "${DL_PATH}" https://cgdlsrc.chinesegamer.net/client/WLROnline.exe
+	wget_error="${?}"
+	if [ "${wget_error}" != 0 ]; then
+		error "wget error ${wget_error}"
 	fi
 fi
 
 msg "Creating the Wine prefix..."
-[ -d "$HOME/.wineprefix" ] || mkdir "$HOME/.wineprefix"
-wineboot > /dev/null 2>&1
-mkdir -p "$GAMEPATH"
+[ -d "${home}/.wineprefix" ] || mkdir "${home}/.wineprefix"
+umu-run wineboot --init > /dev/null
+mkdir -p "${gamepath}"
 
 msg "Extracting the game..."
 (
-cd "$GAMEPATH"
-unrar x "$LOCAL_INSTALLER" 
+cd "${gamepath}"
+unrar x "${LOCAL_INSTALLER}" 
 )
 
 msg "Launching the updater. Update the game and quit the updater."
 (
-cd "$GAMEPATH" &&
-wine "$GAMEPATH/Main.exe" > /dev/null 2>&1
+cd "${gamepath}" &&
+umu-run "${gamepath}/Main.exe" > /dev/null 2>&1
 )
 
 msg "Creating application menu entries..."
-7z e '-i!.rsrc/1028/ICON/1.ico' -o"$GAMEPATH" "$GAMEPATH/aLogin.exe"
+7z e '-i!.rsrc/1028/ICON/1.ico' -o"${gamepath}" "${gamepath}/aLogin.exe"
 
 printf '[Desktop Entry]
 Type=Application
 Name=Wonderland Online: Legend of Rhode Island
 Icon=%s/1.ico
-Exec=env WINEPREFIX="%s" wine "%s/aLogin.exe"
+Exec=env WINEPREFIX="%s" umu-run "%s/aLogin.exe"
 Path=%s
 Categories=Game' \
-"$GAMEPATH" "$WINEPREFIX" "$GAMEPATH" "$GAMEPATH" > "$HOME/.local/share/applications/wlronline.desktop"
+"${gamepath}" "${WINEPREFIX}" "${gamepath}" "${gamepath}" > "${home}/.local/share/applications/wlronline.desktop"
 
 printf '[Desktop Entry]
 Type=Application
 Name=WLRO Updater
 Icon=%s/WL.ico
-Exec=env WINEPREFIX="%s" wine "%s/Main.exe" 
+Exec=env WINEPREFIX="%s" umu-run "%s/Main.exe" 
 Path=%s
 Categories=Game' \
-"$GAMEPATH" "$WINEPREFIX" "$GAMEPATH" "$GAMEPATH" > "$HOME/.local/share/applications/wlronline-updater.desktop"
+"${gamepath}" "${WINEPREFIX}" "${gamepath}" "${gamepath}" > "${home}/.local/share/applications/wlronline-updater.desktop"
 
-[ "$KEEP_INSTALLER" = false ] && [ "$LOCAL_INSTALL" = false ] &&
+[ "${KEEP_INSTALLER}" = false ] && [ "${LOCAL_INSTALL}" = false ] &&
 msg "Cleaning up..." &&
-rm -v "$DL_PATH/WLROnline.exe" &&
-rmdir -v "$DL_PATH"
+rm -v "${DL_PATH}/WLROnline.exe" &&
+rmdir -v "${DL_PATH}"
 
 msg "All done! You can now launch the game or run the english patcher."
-};
+)}
 
-uninstall() {
-msg "This will remove EVERYTHING under the following directory: $WINEPREFIX and the application menu entry. Are you sure? [y/N]"
+uninstall() {(
+msg "This will remove EVERYTHING under the following directories: ${WINEPREFIX}, ${gamepath}, ${sharepath} and the application menu entry. Are you sure? [y/N]"
 read -r CHOICE
-[ "$CHOICE" = "y" ] || [ "$CHOICE" = "Y" ] || error "Halted uninstallation."
-rm -rvf "$GAMEPATH" "$WINEPREFIX" "$HOME/.local/share/applications/wlronline.desktop" "$HOME/.local/share/applications/wlronline-updater.desktop"
+[ "${CHOICE}" = "y" ] || [ "${CHOICE}" = "Y" ] || error "Halted uninstallation."
+rm -rvf "${gamepath}" "${WINEPREFIX}" "${home}/.local/share/applications/wlronline.desktop" "${home}/.local/share/applications/wlronline-updater.desktop"
+rm -rvf "${sharepath}" || true
 msg "All done! The game is now removed."
-}
+)}
 
-patch() {
-command -v unzip >/dev/null || error "unzip - command not found.\nThis script requires unzip being installed and accessible from the shell."
+patch() {(
+for i in 7z git; do
+  command -v "${i}" >/dev/null || error "${i} - command not found.\nThis script requires ${i} being installed and accessible from the shell."
+done
 
-[ -d "$WINEPREFIX" ] || error "WLRO Wine prefix doesn't exist. Is the game installed?"
+[ -d "${WINEPREFIX}" ] || error "WLRO Wine prefix doesn't exist. Is the game installed?"
 
-[ -f aLogin.exe ] && [ -f SERVER.INI ] && [ -f data.zip ] && [ -f menu.zip ] ||
-error "This command needs to be ran from a directory containing all English-patched files: aLogin.exe, SERVER.INI, data.zip & menu.zip."
+gitclonepath="${sharepath}/git-clone"
+patchpath="${gitclonepath}/WLRI-English-Patch"
 
-msg "This will replace files under the following directory: $WINEPREFIX. Are you sure? [y/N]"
+msg "Make sure to update the game before patching files in the directory: ${gamepath}. Are you ready? [y/N]"
 read -r CHOICE
 [ "$CHOICE" = "y" ] || [ "$CHOICE" = "Y" ] || error "Halted patching."
 
-zipinfo -1 data.zip | while read -r f; do find "$GAMEPATH/$(dirname "$f")" -type f -iname "$(basename "$f")" -exec rm -vf {} \;; done
-unzip -o data.zip -d "$GAMEPATH/"
+if [ -d "${patchpath}" ]; then (
+  cd "${patchpath}"
+  prevcommit="$(git rev-parse HEAD)"
+  git pull
+  patchchanges="$(git diff --name-only "${prevcommit}")"
+  if [ -z patchchanges ]; then
+    msg "already at latest patch."
+    msg "nothing to do."
+    exit 0
+  fi
+  # Merely extracting the archive might result in duplicate files with names
+  # of varied cases. That's why we case-insensitively match filenames to be
+  # replaced and remove them.
+  echo "${patchchanges}" | while read -r file; do (
+    if echo "${file}" | grep "^root/" > /dev/null ; then
+      # Remove files to be replaced
+      find "${gamepath}/$(dirname "${file#root/}")" -type f -iname "$(basename "${file}")" -exec rm -vf {} \;;
+      cp -vf "${file#root/}" "${gamepath}/"
+    elif echo "${file}" | grep "^data/" > /dev/null ; then
+      # Remove files to be replaced
+      find "${gamepath}/$(dirname "${file}")" -type f -iname "$(basename "${file}")" -exec rm -vf {} \;;
+      cp -vf "${file}" "${gamepath}/data/"
+    elif echo "${file}" | grep "^ui.zip$" > /dev/null ; then
+      # Remove files to be replaced
+      7z l -ba ui.zip | grep -vF 'D....' | grep -oP '(?<=^.{53}).*' | while read -r file; do find "${gamepath}/$(dirname "${file}")" -type f -iname "$(basename "${file}")" -exec rm -vf {} \;; done
+      cd "${gamepath}"
+      7z x "${patchpath}/ui.zip"
+    elif echo "${file}" | grep "^README.md$" > /dev/null ; then
+      true
+    else
+      error "File not recognized: ${file}"
+    fi
+  ); done
+)
+else (
+  mkdir -pv "${gitclonepath}" || error "failed to create git clone path."
+  cd "${gitclonepath}"
+  git clone --depth 1 https://github.com/hqddr15/WLRI-English-Patch.git || error "failed to clone translation patch repo."
+  cd WLRI-English-Patch
+  # Remove files to be replaced and then replace them
+  for file in root/* ; do
+    find "${gamepath}/$(dirname "${file#root/}")" -type f -iname "$(basename "${file}")" -exec rm -vf {} \;;
+  done
+  cp -vf root/* "${gamepath}/"
+  for file in data/* ; do
+    find "${gamepath}/$(dirname "${file}")" -type f -iname "$(basename "${file}")" -exec rm -vf {} \;;
+  done
+  cp -vf data/* "${gamepath}/data/"
+  7z l -ba ui.zip | grep -vF 'D....' | grep -oP '(?<=^.{53}).*' | while read -r file; do
+    find "${gamepath}/$(dirname "${file}")" -type f -iname "$(basename "${file}")" -exec rm -vf {} \;;
+  done
+  cd "${gamepath}"
+  7z x "${patchpath}/ui.zip"
+); fi
 
-zipinfo -1 menu.zip | while read -r f; do find "$GAMEPATH/$(dirname "$f")" -type f -iname "$(basename "$f")" -exec rm -vf {} \;; done
-unzip -o menu.zip -d "$GAMEPATH/"
-
-cp -v aLogin.exe SERVER.INI "$GAMEPATH/"
 msg "The game was successfully patched."
-}
+)}
 
-help() {
+help() {(
 msg "
-Usage: $THIS_NAME [update | install [{-l | --local} installer_file | {-k | --keep}] | uninstall | patch]
+Usage: ${THIS_NAME} [update | install [{-l | --local} installer_file | {-k | --keep}] | uninstall | patch]
 This is a script to run and install Wonderland Online: Legend of Rhode Island on a GNU/Linux system. Ran without parameters it will launch the game.
 
 options:
 update: Runs the game updater.
 install: Creates the Wine prefix, downloads the installer (if necessary) and extracts it. The -l (--local) switch allows you to specify the installer on your filesystem. The -k (--keep) switch downloads the installer to your working directory and doesn't remove it at the end of the installation process.
 uninstall: Removes the entire Wine prefix and the application menu entries.
-patch: Installs Rifeldo's English patch if its files reside in the working directory.
+patch: Installs Draft's English patch.
 
 overridable variables:
 CUSTOM_WINEPFX: Custom WINEPREFIX path.
 CUSTOM_GAMEPATH: Custom path to install the game to.
 "
-}
+)}
 
-[ -n "$4" ] && error "Too many arguments."
+[ "${#}" -gt 3 ] && error "Too many arguments."
 
 write_config
 
-case $1 in
-	"")
-		run;;
-	"update")
-		[ -n "$2" ] && error "Too many arguments."
-		update;;
-	"install")
-		install "$2" "$3";;
-	"uninstall")
-		[ -n "$2" ] && error "Too many arguments."
-		uninstall;;
-	"patch")
-		[ -n "$2" ] && error "Too many arguments."
-		patch;;
-	"--help")
-		help;;
-	*)
-		error "Command unavailable - $1. Available commands: update, install, uninstall, patch.";;
-esac
+if [ "${#}" -eq 0 ]; then
+  run
+else
+  case "${1}" in
+    "update")
+      [ "${#}" -gt 1 ] && error "Too many arguments."
+      update;;
+    "install")
+      if [ "${#}" -lt 2 ]; then
+        install
+      else
+        install "${@:2}"
+      fi;;
+    "uninstall")
+      [ "${#}" -gt 1 ] && error "Too many arguments."
+      uninstall;;
+    "patch")
+      [ "${#}" -gt 1 ] && error "Too many arguments."
+      patch;;
+    "--help")
+      help;;
+    *)
+      error "Command unavailable - ${1}. Available commands: update, install, uninstall, patch.";;
+  esac
+fi
+)
